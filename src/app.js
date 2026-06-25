@@ -20,6 +20,7 @@ import orderRoutes from './routes/orderRoutes.js';
 import kdsRoutes from './routes/kdsRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import publicRoutes from './routes/publicRoutes.js';
+import bootstrapRoutes from './routes/bootstrapRoutes.js';
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/kds', kdsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/bootstrap', bootstrapRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 
