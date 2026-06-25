@@ -100,5 +100,6 @@ export const me = async (req, res) => {
     role: req.user.role,
     permissions: req.user.permissions,
     businessId: req.user.businessId,
+    outlets: req.user.outlets,
   });
 };
