@@ -8,7 +8,10 @@ import { toStockQty } from '../utils/unitConversion.js';
 // Deducts the ingredients consumed by a sold order's items (per each
 // product's effective recipe, accounting for combos/customisations) and
 // auto-creates a purchase order for any ingredient that drops below its
-// reorder threshold as a result.
+// reorder threshold as a result. Returns the names of any ingredients that
+// were oversold (stock would have gone negative) so callers can flag the
+// order for review instead of blocking it - this happens when an offline
+// device sells more of an ingredient than was actually left.
 export async function consumeRecipeForItems(items, { businessId, tokenId, createdBy }) {
   const business = await Business.findById(businessId);
   const autoCreatePO = business?.settings?.autoCreatePurchaseOrder ?? true;
@@ -25,11 +28,14 @@ export async function consumeRecipeForItems(items, { businessId, tokenId, create
     }
   }
 
+  const oversoldIngredients = [];
+
   for (const [ingredientId, recipeQtyUsed] of usage.entries()) {
     const ingredient = await Ingredient.findById(ingredientId);
     if (!ingredient) continue;
 
     const qtyUsed = toStockQty(ingredient.unit, recipeQtyUsed);
+    if (qtyUsed > ingredient.stockQty) oversoldIngredients.push(ingredient.name);
     ingredient.stockQty = Math.max(0, ingredient.stockQty - qtyUsed);
     await ingredient.save();
 
@@ -57,6 +63,8 @@ export async function consumeRecipeForItems(items, { businessId, tokenId, create
       }
     }
   }
+
+  return oversoldIngredients;
 }
 
 // Restores stock when an order is cancelled before the kitchen has consumed

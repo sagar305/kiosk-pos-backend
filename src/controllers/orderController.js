@@ -102,11 +102,17 @@ export const createOrder = async (req, res) => {
       product: products.find((p) => String(p._id) === String(i.product)),
       selectedOptions: i.selectedOptions || [],
     }));
-    await consumeRecipeForItems(itemsForInventory, {
+    const oversoldIngredients = await consumeRecipeForItems(itemsForInventory, {
       businessId: req.businessId,
       tokenId: token._id,
       createdBy: req.user._id,
     });
+
+    if (oversoldIngredients.length) {
+      token.stockConflict = true;
+      token.stockConflictIngredients = oversoldIngredients;
+      await token.save();
+    }
 
     broadcast(req.businessId, req.outletId, 'token_created', token);
     res.status(201).json(token);

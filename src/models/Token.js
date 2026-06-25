@@ -78,6 +78,11 @@ const tokenSchema = new mongoose.Schema(
     refundAmount: { type: Number, default: 0 },
     refundReason: String,
     refundedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+
+    // Set when this order (synced from an offline device) oversold an
+    // ingredient below zero; surfaced to the owner/manager to reconcile.
+    stockConflict: { type: Boolean, default: false },
+    stockConflictIngredients: { type: [String], default: [] },
   },
   { timestamps: true }
 );
