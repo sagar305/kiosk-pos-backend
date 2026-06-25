@@ -1,4 +1,5 @@
 import Product from '../models/Product.js';
+import { cloudinaryEnabled, uploadToCloudinary } from '../middlewares/upload.js';
 
 // multipart/form-data (used when an image file is attached) can only carry
 // string fields, so array/object fields are sent JSON-encoded and need parsing.
@@ -20,6 +21,12 @@ export const listProducts = async (req, res) => {
   res.json(products);
 };
 
+async function resolveImage(req) {
+  if (!req.file) return req.body.image;
+  if (cloudinaryEnabled) return uploadToCloudinary(req.file.buffer);
+  return `/uploads/${req.file.filename}`;
+}
+
 export const createProduct = async (req, res) => {
   try {
     const { name, category, price, taxIds, recipe, available, type, customisations, comboItems } = req.body;
@@ -33,7 +40,7 @@ export const createProduct = async (req, res) => {
       type,
       customisations: parseJsonField(customisations),
       comboItems: parseJsonField(comboItems),
-      image: req.file ? `/uploads/${req.file.filename}` : req.body.image,
+      image: await resolveImage(req),
     });
     res.status(201).json(product);
   } catch (err) {
@@ -48,7 +55,7 @@ export const updateProduct = async (req, res) => {
     if (update.recipe !== undefined) update.recipe = parseJsonField(update.recipe);
     if (update.customisations !== undefined) update.customisations = parseJsonField(update.customisations);
     if (update.comboItems !== undefined) update.comboItems = parseJsonField(update.comboItems);
-    if (req.file) update.image = `/uploads/${req.file.filename}`;
+    if (req.file) update.image = await resolveImage(req);
     const product = await Product.findByIdAndUpdate(req.params.id, update, { new: true });
     if (!product) return res.status(404).json({ error: 'Not found' });
     res.json(product);
