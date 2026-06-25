@@ -8,7 +8,7 @@ const router = express.Router();
 
 router.get('/stream', requireAuthSSE, (req, res) => addClient(req, res));
 
-router.use(requireAuth, permit('owner', 'kitchen_staff'));
+router.use(requireAuth, permit('owner', 'kitchen_staff', 'pos_manager'));
 router.get('/', listKdsTokens);
 router.patch('/:tokenId/items/:itemId/start', startPreparingItem);
 router.patch('/:tokenId/items/:itemId/unavailable', markItemUnavailable);
