@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { nextSequence } from './Counter.js';
 import tenantPlugin from '../utils/tenantPlugin.js';
+import outletPlugin from '../utils/outletPlugin.js';
 
 const purchaseOrderSchema = new mongoose.Schema(
   {
@@ -24,5 +25,6 @@ purchaseOrderSchema.pre('save', async function (next) {
 });
 
 purchaseOrderSchema.plugin(tenantPlugin);
+purchaseOrderSchema.plugin(outletPlugin);
 
 export default mongoose.model('PurchaseOrder', purchaseOrderSchema);

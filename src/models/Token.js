@@ -1,5 +1,18 @@
 import mongoose from 'mongoose';
 import tenantPlugin from '../utils/tenantPlugin.js';
+import outletPlugin from '../utils/outletPlugin.js';
+
+// A chosen customisation option, snapshotted at order time (name/priceDelta
+// recorded here too, since the product's own option could change later).
+const selectedOptionSchema = new mongoose.Schema(
+  {
+    group: { type: String, required: true },
+    option: { type: mongoose.Schema.Types.ObjectId, required: true },
+    name: { type: String, required: true },
+    priceDelta: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
 
 const itemSchema = new mongoose.Schema(
   {
@@ -8,6 +21,7 @@ const itemSchema = new mongoose.Schema(
     price: { type: Number, required: true },
     qty: { type: Number, required: true, default: 1 },
     notes: { type: String, default: '' },
+    selectedOptions: { type: [selectedOptionSchema], default: [] },
     itemStatus: {
       type: String,
       enum: ['pending', 'preparing', 'ready', 'unavailable'],
@@ -69,6 +83,7 @@ const tokenSchema = new mongoose.Schema(
 );
 
 tokenSchema.plugin(tenantPlugin);
-tokenSchema.index({ businessId: 1, tokenDate: 1, tokenNumber: 1 }, { unique: true });
+tokenSchema.plugin(outletPlugin);
+tokenSchema.index({ businessId: 1, outlet: 1, tokenDate: 1, tokenNumber: 1 }, { unique: true });
 
 export default mongoose.model('Token', tokenSchema);

@@ -45,7 +45,7 @@ export const startPreparingItem = async (req, res) => {
   if (token.status === 'pending') token.status = 'preparing';
   await token.save();
 
-  broadcast(req.businessId, 'token_updated', toKdsView(token));
+  broadcast(req.businessId, req.outletId, 'token_updated', toKdsView(token));
   res.json(toKdsView(token));
 };
 
@@ -58,7 +58,7 @@ export const markItemUnavailable = async (req, res) => {
   item.itemStatus = 'unavailable';
   await syncTokenStatusFromItems(token);
 
-  broadcast(req.businessId, 'token_updated', toKdsView(token));
+  broadcast(req.businessId, req.outletId, 'token_updated', toKdsView(token));
   res.json(toKdsView(token));
 };
 
@@ -71,6 +71,6 @@ export const markItemReady = async (req, res) => {
   item.itemStatus = 'ready';
   await syncTokenStatusFromItems(token);
 
-  broadcast(req.businessId, 'token_ready', toKdsView(token));
+  broadcast(req.businessId, req.outletId, 'token_ready', toKdsView(token));
   res.json(toKdsView(token));
 };

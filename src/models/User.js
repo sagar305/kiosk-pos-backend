@@ -18,6 +18,10 @@ const userSchema = new mongoose.Schema(
       canRefund: { type: Boolean, default: null },
       canMarkProductUnavailable: { type: Boolean, default: true },
     },
+    // Outlets this staff member can work at (ignored for owners, who have
+    // access to every outlet). The first entry is used as their default
+    // outlet when no X-Outlet-Id header is sent.
+    outlets: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Outlet' }],
     active: { type: Boolean, default: true },
     refreshToken: String,
   },

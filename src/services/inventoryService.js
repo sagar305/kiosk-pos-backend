@@ -2,29 +2,34 @@ import Ingredient from '../models/Ingredient.js';
 import StockLog from '../models/StockLog.js';
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import Business from '../models/Business.js';
+import { getEffectiveRecipe } from './menuService.js';
+import { toStockQty } from '../utils/unitConversion.js';
 
 // Deducts the ingredients consumed by a sold order's items (per each
-// product's recipe) and auto-creates a purchase order for any ingredient
-// that drops below its reorder threshold as a result.
+// product's effective recipe, accounting for combos/customisations) and
+// auto-creates a purchase order for any ingredient that drops below its
+// reorder threshold as a result.
 export async function consumeRecipeForItems(items, { businessId, tokenId, createdBy }) {
   const business = await Business.findById(businessId);
   const autoCreatePO = business?.settings?.autoCreatePurchaseOrder ?? true;
 
-  // items: populated Token.items, each with product.recipe
-  const usage = new Map(); // ingredientId -> qty consumed
+  // items: each with product (populated, comboItems.product populated) and qty/selectedOptions
+  const usage = new Map(); // ingredientId -> recipe-unit qty consumed
 
   for (const item of items) {
-    const recipe = item.product?.recipe || [];
+    if (!item.product) continue;
+    const recipe = getEffectiveRecipe(item.product, item.selectedOptions || []);
     for (const line of recipe) {
       const ingId = String(line.ingredient);
       usage.set(ingId, (usage.get(ingId) || 0) + line.qty * item.qty);
     }
   }
 
-  for (const [ingredientId, qtyUsed] of usage.entries()) {
+  for (const [ingredientId, recipeQtyUsed] of usage.entries()) {
     const ingredient = await Ingredient.findById(ingredientId);
     if (!ingredient) continue;
 
+    const qtyUsed = toStockQty(ingredient.unit, recipeQtyUsed);
     ingredient.stockQty = Math.max(0, ingredient.stockQty - qtyUsed);
     await ingredient.save();
 
@@ -59,16 +64,18 @@ export async function consumeRecipeForItems(items, { businessId, tokenId, create
 export async function restockRecipeForItems(items, { tokenId, createdBy }) {
   const usage = new Map();
   for (const item of items) {
-    const recipe = item.product?.recipe || [];
+    if (!item.product) continue;
+    const recipe = getEffectiveRecipe(item.product, item.selectedOptions || []);
     for (const line of recipe) {
       const ingId = String(line.ingredient);
       usage.set(ingId, (usage.get(ingId) || 0) + line.qty * item.qty);
     }
   }
 
-  for (const [ingredientId, qty] of usage.entries()) {
+  for (const [ingredientId, recipeQty] of usage.entries()) {
     const ingredient = await Ingredient.findById(ingredientId);
     if (!ingredient) continue;
+    const qty = toStockQty(ingredient.unit, recipeQty);
     ingredient.stockQty += qty;
     await ingredient.save();
     await StockLog.create({

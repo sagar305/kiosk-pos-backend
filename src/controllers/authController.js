@@ -21,7 +21,7 @@ export const signup = async (req, res) => {
     const business = await Business.create({ name: businessName, slug: slugify(businessName) });
     const hash = await bcrypt.hash(password, 10);
 
-    const user = await runWithTenant(business._id, () =>
+    const user = await runWithTenant(business._id, null, () =>
       User.create({ name, email, password: hash, role: 'owner', businessId: business._id })
     );
     business.ownerId = user._id;

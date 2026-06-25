@@ -16,11 +16,13 @@ export async function nextSequence(name) {
   return counter.seq;
 }
 
-// Token numbers reset daily, so the sequence key is namespaced by business
-// and calendar date (YYYY-MM-DD) rather than being a single ever-growing counter.
-export async function nextDailySequence(businessId, date = new Date()) {
+// Token numbers reset daily per outlet, so the sequence key is namespaced by
+// business, outlet and calendar date (YYYY-MM-DD) rather than being a single
+// ever-growing counter.
+export async function nextDailySequence(businessId, outletId, date = new Date()) {
   const day = date.toISOString().slice(0, 10);
-  return nextSequence(`token_${businessId}_${day}`);
+  const key = outletId ? `token_${businessId}_${outletId}_${day}` : `token_${businessId}_${day}`;
+  return nextSequence(key);
 }
 
 export default Counter;

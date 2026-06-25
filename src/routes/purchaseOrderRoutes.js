@@ -5,12 +5,12 @@ import {
   receivePurchaseOrder,
   cancelPurchaseOrder,
 } from '../controllers/purchaseOrderController.js';
-import { requireAuth } from '../middlewares/authMiddleware.js';
+import { requireAuth, requireOutlet } from '../middlewares/authMiddleware.js';
 import { permit } from '../middlewares/roleMiddleware.js';
 
 const router = express.Router();
 
-router.use(requireAuth, permit('owner'));
+router.use(requireAuth, permit('owner'), requireOutlet);
 router.get('/', listPurchaseOrders);
 router.post('/', createPurchaseOrder);
 router.post('/:id/receive', receivePurchaseOrder);

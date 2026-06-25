@@ -7,6 +7,7 @@ import { nextDailySequence } from '../models/Counter.js';
 import { computeOrderTotals } from '../services/orderTotalsService.js';
 import { consumeRecipeForItems, restockRecipeForItems } from '../services/inventoryService.js';
 import { broadcast } from '../services/sseService.js';
+import { resolveSelectedOptions } from '../services/menuService.js';
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -26,7 +27,7 @@ export const createOrder = async (req, res) => {
     const { items, discountType, discountValue, discountReason, couponCode, feeIds, tipAmount, customerName, customerMobile } = req.body;
     if (!items?.length) return res.status(400).json({ error: 'Cart is empty' });
 
-    const products = await Product.find({ _id: { $in: items.map((i) => i.product) } });
+    const products = await Product.find({ _id: { $in: items.map((i) => i.product) } }).populate('comboItems.product');
 
     let appliedCoupon = null;
     let finalDiscountType = discountType || 'value';
@@ -62,16 +63,18 @@ export const createOrder = async (req, res) => {
     });
 
     const tokenDate = todayKey();
-    const tokenNumber = await nextDailySequence(req.businessId);
+    const tokenNumber = await nextDailySequence(req.businessId, req.outletId);
 
     const tokenItems = items.map((i) => {
       const product = products.find((p) => String(p._id) === String(i.product));
+      const { selected, priceDelta } = resolveSelectedOptions(product, i.selectedOptions || []);
       return {
         product: i.product,
         name: product.name,
-        price: product.price,
+        price: product.price + priceDelta,
         qty: i.qty,
         notes: i.notes || '',
+        selectedOptions: selected,
       };
     });
 
@@ -97,6 +100,7 @@ export const createOrder = async (req, res) => {
     const itemsForInventory = items.map((i) => ({
       qty: i.qty,
       product: products.find((p) => String(p._id) === String(i.product)),
+      selectedOptions: i.selectedOptions || [],
     }));
     await consumeRecipeForItems(itemsForInventory, {
       businessId: req.businessId,
@@ -104,7 +108,7 @@ export const createOrder = async (req, res) => {
       createdBy: req.user._id,
     });
 
-    broadcast(req.businessId, 'token_created', token);
+    broadcast(req.businessId, req.outletId, 'token_created', token);
     res.status(201).json(token);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -121,7 +125,7 @@ export const recordPayment = async (req, res) => {
   token.paymentStatus = paidTotal >= token.total ? 'paid' : 'unpaid';
   await token.save();
 
-  broadcast(req.businessId, 'token_updated', token);
+  broadcast(req.businessId, req.outletId, 'token_updated', token);
   res.json(token);
 };
 
@@ -142,14 +146,21 @@ export const getOrder = async (req, res) => {
 
 export const cancelOrder = async (req, res) => {
   const { reason } = req.body;
-  const token = await Token.findById(req.params.id).populate('items.product');
+  const token = await Token.findById(req.params.id).populate({
+    path: 'items.product',
+    populate: { path: 'comboItems.product' },
+  });
   if (!token) return res.status(404).json({ error: 'Not found' });
   if (['completed', 'cancelled'].includes(token.status)) {
     return res.status(400).json({ error: `Cannot cancel a ${token.status} order` });
   }
 
   await restockRecipeForItems(
-    token.items.map((ti) => ({ qty: ti.qty, product: ti.product })),
+    token.items.map((ti) => ({
+      qty: ti.qty,
+      product: ti.product,
+      selectedOptions: ti.selectedOptions?.map((o) => o.option) || [],
+    })),
     { tokenId: token._id, createdBy: req.user._id }
   );
 
@@ -157,7 +168,7 @@ export const cancelOrder = async (req, res) => {
   token.cancelledReason = reason;
   await token.save();
 
-  broadcast(req.businessId, 'token_updated', token);
+  broadcast(req.businessId, req.outletId, 'token_updated', token);
   res.json(token);
 };
 
@@ -184,7 +195,7 @@ export const refundOrder = async (req, res) => {
   token.paymentStatus = refundAmount >= token.total ? 'refunded' : 'partially_refunded';
   await token.save();
 
-  broadcast(req.businessId, 'token_updated', token);
+  broadcast(req.businessId, req.outletId, 'token_updated', token);
   res.json(token);
 };
 
@@ -195,7 +206,7 @@ export const completeOrder = async (req, res) => {
   if (token.status !== 'ready') return res.status(400).json({ error: 'Order is not ready for pickup yet' });
   token.status = 'completed';
   await token.save();
-  broadcast(req.businessId, 'token_updated', token);
+  broadcast(req.businessId, req.outletId, 'token_updated', token);
   res.json(token);
 };
 

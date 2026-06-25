@@ -1,7 +1,10 @@
 import Tax from '../models/Tax.js';
+import { resolveSelectedOptions } from './menuService.js';
 
 // Computes the full charge breakdown for a set of cart items against the
 // business's active taxes, an optional discount/coupon, fees and tip.
+// Each item's unit price is its product's base price plus any chosen
+// customisation options' priceDelta.
 export async function computeOrderTotals({ items, products, discountType, discountValue, fees, tipAmount }) {
   let itemsSubtotal = 0;
   let taxTotal = 0;
@@ -9,7 +12,9 @@ export async function computeOrderTotals({ items, products, discountType, discou
   for (const item of items) {
     const product = products.find((p) => String(p._id) === String(item.product));
     if (!product) continue;
-    const lineTotal = product.price * item.qty;
+    const { priceDelta } = resolveSelectedOptions(product, item.selectedOptions || []);
+    const unitPrice = product.price + priceDelta;
+    const lineTotal = unitPrice * item.qty;
     itemsSubtotal += lineTotal;
 
     if (product.taxIds?.length) {

@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import tenantPlugin from '../utils/tenantPlugin.js';
+import outletPlugin from '../utils/outletPlugin.js';
 
 const stockLogSchema = new mongoose.Schema(
   {
@@ -14,5 +15,6 @@ const stockLogSchema = new mongoose.Schema(
 );
 
 stockLogSchema.plugin(tenantPlugin);
+stockLogSchema.plugin(outletPlugin);
 
 export default mongoose.model('StockLog', stockLogSchema);
