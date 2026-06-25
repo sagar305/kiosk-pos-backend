@@ -51,5 +51,5 @@ export async function computeOrderTotals({ items, products, discountType, discou
 }
 
 function round2(n) {
-  return Math.round(n * 100) / 100;
+  return Math.round(n * 1000) / 1000;
 }

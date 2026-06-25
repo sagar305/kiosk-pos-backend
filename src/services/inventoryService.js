@@ -5,6 +5,10 @@ import Business from '../models/Business.js';
 import { getEffectiveRecipe } from './menuService.js';
 import { toStockQty } from '../utils/unitConversion.js';
 
+function round3(n) {
+  return Math.round(n * 1000) / 1000;
+}
+
 // Deducts the ingredients consumed by a sold order's items (per each
 // product's effective recipe, accounting for combos/customisations) and
 // auto-creates a purchase order for any ingredient that drops below its
@@ -34,9 +38,9 @@ export async function consumeRecipeForItems(items, { businessId, tokenId, create
     const ingredient = await Ingredient.findById(ingredientId);
     if (!ingredient) continue;
 
-    const qtyUsed = toStockQty(ingredient.unit, recipeQtyUsed);
+    const qtyUsed = round3(toStockQty(ingredient.unit, recipeQtyUsed));
     if (qtyUsed > ingredient.stockQty) oversoldIngredients.push(ingredient.name);
-    ingredient.stockQty = Math.max(0, ingredient.stockQty - qtyUsed);
+    ingredient.stockQty = round3(Math.max(0, ingredient.stockQty - qtyUsed));
     await ingredient.save();
 
     await StockLog.create({
@@ -83,8 +87,8 @@ export async function restockRecipeForItems(items, { tokenId, createdBy }) {
   for (const [ingredientId, recipeQty] of usage.entries()) {
     const ingredient = await Ingredient.findById(ingredientId);
     if (!ingredient) continue;
-    const qty = toStockQty(ingredient.unit, recipeQty);
-    ingredient.stockQty += qty;
+    const qty = round3(toStockQty(ingredient.unit, recipeQty));
+    ingredient.stockQty = round3(ingredient.stockQty + qty);
     await ingredient.save();
     await StockLog.create({
       ingredient: ingredient._id,

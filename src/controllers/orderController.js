@@ -144,6 +144,33 @@ export const listOrders = async (req, res) => {
   res.json(tokens);
 };
 
+// Customers aren't their own model - they're just name/mobile snapshotted on
+// past orders - so "search existing customers" means finding distinct
+// name/mobile pairs from order history that match the query.
+export const searchCustomers = async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.json([]);
+  const regex = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const tokens = await Token.find({
+    $or: [{ customerName: regex }, { customerMobile: regex }],
+  })
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .select('customerName customerMobile');
+
+  const seen = new Set();
+  const customers = [];
+  for (const t of tokens) {
+    if (!t.customerName && !t.customerMobile) continue;
+    const key = `${t.customerName || ''}|${t.customerMobile || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    customers.push({ customerName: t.customerName || '', customerMobile: t.customerMobile || '' });
+    if (customers.length >= 10) break;
+  }
+  res.json(customers);
+};
+
 export const getOrder = async (req, res) => {
   const token = await Token.findById(req.params.id).populate('cashier', 'name').populate('items.product');
   if (!token) return res.status(404).json({ error: 'Not found' });

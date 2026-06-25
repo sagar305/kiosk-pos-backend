@@ -8,6 +8,7 @@ import {
   refundOrder,
   completeOrder,
   reprintOrder,
+  searchCustomers,
 } from '../controllers/orderController.js';
 import { requireAuth, requireOutlet } from '../middlewares/authMiddleware.js';
 import { permit } from '../middlewares/roleMiddleware.js';
@@ -16,6 +17,7 @@ const router = express.Router();
 
 router.use(requireAuth, permit('owner', 'pos_manager'));
 router.get('/', listOrders);
+router.get('/customers/search', searchCustomers);
 router.get('/reprint/:tokenNumber', reprintOrder);
 router.get('/:id', getOrder);
 router.post('/', requireOutlet, createOrder);
