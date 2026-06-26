@@ -1,6 +1,7 @@
 import Ingredient from '../models/Ingredient.js';
 import StockLog from '../models/StockLog.js';
 import StockBatch from '../models/StockBatch.js';
+import PurchaseOrder from '../models/PurchaseOrder.js';
 
 export const listIngredients = async (req, res) => res.json(await Ingredient.find());
 
@@ -11,7 +12,18 @@ export const listLowStock = async (req, res) => {
 
 export const createIngredient = async (req, res) => {
   try {
-    const ingredient = await Ingredient.create(req.body);
+    const { expiryDate, ...body } = req.body;
+    const ingredient = await Ingredient.create(body);
+
+    if (ingredient.stockQty > 0) {
+      await StockBatch.create({
+        ingredient: ingredient._id,
+        qty: ingredient.stockQty,
+        expiryDate: expiryDate ? new Date(expiryDate) : undefined,
+        source: 'opening',
+      });
+    }
+
     res.status(201).json(ingredient);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -25,6 +37,12 @@ export const updateIngredient = async (req, res) => {
 };
 
 export const deleteIngredient = async (req, res) => {
+  const poCount = await PurchaseOrder.countDocuments({ ingredient: req.params.id });
+  if (poCount > 0) {
+    return res
+      .status(400)
+      .json({ error: 'Cannot delete an ingredient with purchase order history. Deactivate it instead.' });
+  }
   await Ingredient.findByIdAndDelete(req.params.id);
   res.json({ ok: true });
 };
@@ -32,7 +50,7 @@ export const deleteIngredient = async (req, res) => {
 // Manual stock adjustment (e.g. wastage, stock count correction), independent
 // of order consumption and purchase receiving.
 export const adjustStock = async (req, res) => {
-  const { qtyChange, reason } = req.body;
+  const { qtyChange, reason, expiryDate } = req.body;
   const ingredient = await Ingredient.findById(req.params.id);
   if (!ingredient) return res.status(404).json({ error: 'Not found' });
 
@@ -46,6 +64,15 @@ export const adjustStock = async (req, res) => {
     reason,
     createdBy: req.user._id,
   });
+
+  if (Number(qtyChange) > 0) {
+    await StockBatch.create({
+      ingredient: ingredient._id,
+      qty: Number(qtyChange),
+      expiryDate: expiryDate ? new Date(expiryDate) : undefined,
+      source: 'opening',
+    });
+  }
 
   res.json(ingredient);
 };
