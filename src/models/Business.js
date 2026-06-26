@@ -6,6 +6,7 @@ const businessSchema = new mongoose.Schema(
     slug: { type: String, required: true, unique: true },
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     currency: { type: String, default: 'INR' },
+    logo: { type: String, default: '' },
     theme: {
       primaryColor: { type: String, default: '' },
       secondaryColor: { type: String, default: '' },
