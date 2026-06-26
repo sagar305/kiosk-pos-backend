@@ -3,6 +3,7 @@ import Ingredient from '../models/Ingredient.js';
 import StockLog from '../models/StockLog.js';
 import StockBatch from '../models/StockBatch.js';
 import Expense from '../models/Expense.js';
+import Notification from '../models/Notification.js';
 
 function round3(n) {
   return Math.round(n * 1000) / 1000;
@@ -40,6 +41,12 @@ export const requestPurchaseOrder = async (req, res) => {
       requestedReason: reason,
       requestedBy: req.user._id,
       createdBy: req.user._id,
+    });
+    const ing = await Ingredient.findById(ingredient);
+    await Notification.create({
+      type: 'ingredient_request',
+      message: `${req.user.name} requested ${qtyOrdered} ${ing?.unit || ''} of ${ing?.name || 'an ingredient'}${reason ? ` — ${reason}` : ''}`,
+      roles: ['owner'],
     });
     res.status(201).json(po);
   } catch (err) {
