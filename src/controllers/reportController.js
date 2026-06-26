@@ -1,5 +1,6 @@
 import Token from '../models/Token.js';
 import Ingredient from '../models/Ingredient.js';
+import Expense from '../models/Expense.js';
 
 function rangeStart(period) {
   const now = new Date();
@@ -64,6 +65,35 @@ export const paymentsReport = async (req, res) => {
     }
   }
   res.json(Object.fromEntries(Object.entries(totals).map(([k, v]) => [k, round2(v)])));
+};
+
+// Day-by-day net sales within the period, for a trend line chart.
+export const salesTrendReport = async (req, res) => {
+  const start = rangeStart(req.query.period);
+  const tokens = await Token.find({ createdAt: { $gte: start }, status: { $ne: 'cancelled' } });
+  const byDay = new Map();
+  for (const token of tokens) {
+    const day = token.createdAt.toISOString().slice(0, 10);
+    const net = token.total - (token.refundAmount || 0);
+    byDay.set(day, (byDay.get(day) || 0) + net);
+  }
+  const trend = [...byDay.entries()].map(([date, total]) => ({ date, total: round2(total) })).sort((a, b) =>
+    a.date.localeCompare(b.date)
+  );
+  res.json(trend);
+};
+
+export const expensesReport = async (req, res) => {
+  const start = rangeStart(req.query.period);
+  const expenses = await Expense.find({ date: { $gte: start } });
+  const byCategory = new Map();
+  for (const expense of expenses) {
+    byCategory.set(expense.category, (byCategory.get(expense.category) || 0) + expense.amount);
+  }
+  res.json({
+    total: round2(expenses.reduce((sum, e) => sum + e.amount, 0)),
+    byCategory: [...byCategory.entries()].map(([category, total]) => ({ category, total: round2(total) })),
+  });
 };
 
 export const inventoryReport = async (req, res) => {

@@ -21,6 +21,9 @@ import kdsRoutes from './routes/kdsRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import publicRoutes from './routes/publicRoutes.js';
 import bootstrapRoutes from './routes/bootstrapRoutes.js';
+import expenseRoutes from './routes/expenseRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import bulkImportRoutes from './routes/bulkImportRoutes.js';
 
 const app = express();
 
@@ -58,6 +61,9 @@ app.use('/api/kds', kdsRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/bootstrap', bootstrapRoutes);
+app.use('/api/expenses', expenseRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/bulk-import', bulkImportRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

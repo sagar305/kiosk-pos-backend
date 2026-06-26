@@ -1,5 +1,6 @@
 import Ingredient from '../models/Ingredient.js';
 import StockLog from '../models/StockLog.js';
+import StockBatch from '../models/StockBatch.js';
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import Business from '../models/Business.js';
 import { getEffectiveRecipe } from './menuService.js';
@@ -7,6 +8,24 @@ import { toStockQty } from '../utils/unitConversion.js';
 
 function round3(n) {
   return Math.round(n * 1000) / 1000;
+}
+
+// Keeps StockBatch remaining-qty in sync with consumption, oldest-expiry
+// first (FEFO), so expiry tracking/auto-PO/auto-removal stay accurate as
+// stock gets sold rather than only updating on receive.
+async function consumeFromBatches(ingredientId, qty) {
+  let remaining = qty;
+  const batches = await StockBatch.find({ ingredient: ingredientId, qty: { $gt: 0 } }).sort({
+    expiryDate: 1,
+    receivedAt: 1,
+  });
+  for (const batch of batches) {
+    if (remaining <= 0) break;
+    const take = Math.min(batch.qty, remaining);
+    batch.qty = round3(batch.qty - take);
+    await batch.save();
+    remaining = round3(remaining - take);
+  }
 }
 
 // Deducts the ingredients consumed by a sold order's items (per each
@@ -42,6 +61,7 @@ export async function consumeRecipeForItems(items, { businessId, tokenId, create
     if (qtyUsed > ingredient.stockQty) oversoldIngredients.push(ingredient.name);
     ingredient.stockQty = round3(Math.max(0, ingredient.stockQty - qtyUsed));
     await ingredient.save();
+    await consumeFromBatches(ingredient._id, qtyUsed);
 
     await StockLog.create({
       ingredient: ingredient._id,

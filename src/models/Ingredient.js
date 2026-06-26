@@ -14,6 +14,13 @@ const ingredientSchema = new mongoose.Schema(
     reorderQty: { type: Number, default: 0 },
     costPerUnit: { type: Number, default: 0 },
     active: { type: Boolean, default: true },
+    // How this ingredient is usually received (e.g. 1 packet = 40 pc), so
+    // receiving/adjustment screens can let staff enter "packs" instead of
+    // doing the multiplication themselves.
+    packSize: { type: Number, default: 1 },
+    packLabel: { type: String, default: '' },
+    lastPurchasePrice: { type: Number },
+    lastPurchaseDate: { type: Date },
   },
   {
     timestamps: true,
