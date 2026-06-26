@@ -1,6 +1,11 @@
 import Ingredient from '../models/Ingredient.js';
 import StockLog from '../models/StockLog.js';
 import StockBatch from '../models/StockBatch.js';
+import Expense from '../models/Expense.js';
+
+function round3(n) {
+  return Math.round(n * 1000) / 1000;
+}
 
 export const listIngredients = async (req, res) => res.json(await Ingredient.find());
 
@@ -20,6 +25,14 @@ export const createIngredient = async (req, res) => {
         qty: ingredient.stockQty,
         expiryDate: expiryDate ? new Date(expiryDate) : undefined,
         source: 'opening',
+      });
+
+      await Expense.create({
+        category: 'stock_purchase',
+        amount: round3(ingredient.stockQty * ingredient.costPerUnit),
+        description: `Opening stock — ${ingredient.name} (${ingredient.stockQty} ${ingredient.unit})`,
+        ingredient: ingredient._id,
+        createdBy: req.user._id,
       });
     }
 
@@ -59,6 +72,14 @@ export const adjustStock = async (req, res) => {
       qty: Number(qtyChange),
       expiryDate: expiryDate ? new Date(expiryDate) : undefined,
       source: 'opening',
+    });
+
+    await Expense.create({
+      category: 'stock_purchase',
+      amount: round3(Number(qtyChange) * ingredient.costPerUnit),
+      description: `Stock adjustment — ${ingredient.name} (+${qtyChange} ${ingredient.unit})${reason ? `: ${reason}` : ''}`,
+      ingredient: ingredient._id,
+      createdBy: req.user._id,
     });
   }
 
