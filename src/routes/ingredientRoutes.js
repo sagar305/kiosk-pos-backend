@@ -7,6 +7,7 @@ import {
   deleteIngredient,
   adjustStock,
   listStockLogs,
+  listNearestExpiry,
 } from '../controllers/ingredientController.js';
 import { requireAuth, requireOutlet } from '../middlewares/authMiddleware.js';
 import { permit } from '../middlewares/roleMiddleware.js';
@@ -17,6 +18,7 @@ router.use(requireAuth, permit('owner'), requireOutlet);
 router.get('/', listIngredients);
 router.get('/low-stock', listLowStock);
 router.get('/stock-logs', listStockLogs);
+router.get('/nearest-expiry', listNearestExpiry);
 router.post('/', createIngredient);
 router.patch('/:id', updateIngredient);
 router.delete('/:id', deleteIngredient);

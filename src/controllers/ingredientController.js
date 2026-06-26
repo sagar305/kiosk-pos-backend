@@ -1,5 +1,6 @@
 import Ingredient from '../models/Ingredient.js';
 import StockLog from '../models/StockLog.js';
+import StockBatch from '../models/StockBatch.js';
 
 export const listIngredients = async (req, res) => res.json(await Ingredient.find());
 
@@ -47,6 +48,20 @@ export const adjustStock = async (req, res) => {
   });
 
   res.json(ingredient);
+};
+
+// Nearest-expiry batch per ingredient with remaining qty > 0, for surfacing
+// expiry visibility in the inventory UI (FEFO ledger, not the stock total).
+export const listNearestExpiry = async (req, res) => {
+  const batches = await StockBatch.find({ qty: { $gt: 0 }, expiryDate: { $ne: null } }).sort({ expiryDate: 1 });
+  const nearest = new Map();
+  for (const batch of batches) {
+    const key = String(batch.ingredient);
+    if (!nearest.has(key)) nearest.set(key, batch);
+  }
+  res.json(
+    [...nearest.values()].map((b) => ({ ingredient: b.ingredient, qty: b.qty, expiryDate: b.expiryDate }))
+  );
 };
 
 export const listStockLogs = async (req, res) => {
