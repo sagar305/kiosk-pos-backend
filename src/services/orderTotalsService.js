@@ -5,9 +5,15 @@ import { resolveSelectedOptions } from './menuService.js';
 // business's active taxes, an optional discount/coupon, fees and tip.
 // Each item's unit price is its product's base price plus any chosen
 // customisation options' priceDelta.
-export async function computeOrderTotals({ items, products, discountType, discountValue, fees, tipAmount }) {
+export async function computeOrderTotals({ items, products, discountType, discountValue, fees, tipAmount, excludedTaxIds }) {
   let itemsSubtotal = 0;
   let taxTotal = 0;
+
+  // Only non-mandatory taxes can actually be excluded — silently ignore
+  // exclusion attempts on mandatory ones rather than trusting the client.
+  const safeExcludedTaxIds = excludedTaxIds?.length
+    ? (await Tax.find({ _id: { $in: excludedTaxIds }, mandatory: false })).map((t) => String(t._id))
+    : [];
 
   for (const item of items) {
     const product = products.find((p) => String(p._id) === String(item.product));
@@ -18,7 +24,7 @@ export async function computeOrderTotals({ items, products, discountType, discou
     itemsSubtotal += lineTotal;
 
     if (product.taxIds?.length) {
-      const taxes = await Tax.find({ _id: { $in: product.taxIds }, active: true });
+      const taxes = await Tax.find({ _id: { $in: product.taxIds, $nin: safeExcludedTaxIds }, active: true });
       for (const tax of taxes) {
         taxTotal += (lineTotal * tax.percent) / 100;
       }

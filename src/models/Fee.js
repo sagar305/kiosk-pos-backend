@@ -7,6 +7,7 @@ const feeSchema = new mongoose.Schema(
     type: { type: String, enum: ['flat', 'percent'], default: 'flat' },
     value: { type: Number, required: true },
     active: { type: Boolean, default: true },
+    mandatory: { type: Boolean, default: true },
   },
   { timestamps: true }
 );

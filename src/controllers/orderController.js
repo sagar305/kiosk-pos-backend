@@ -24,7 +24,18 @@ async function canRefund(user) {
 
 export const createOrder = async (req, res) => {
   try {
-    const { items, discountType, discountValue, discountReason, couponCode, feeIds, tipAmount, customerName, customerMobile } = req.body;
+    const {
+      items,
+      discountType,
+      discountValue,
+      discountReason,
+      couponCode,
+      excludedFeeIds,
+      excludedTaxIds,
+      tipAmount,
+      customerName,
+      customerMobile,
+    } = req.body;
     if (!items?.length) return res.status(400).json({ error: 'Cart is empty' });
 
     const products = await Product.find({ _id: { $in: items.map((i) => i.product) } }).populate('comboItems.product');
@@ -51,7 +62,13 @@ export const createOrder = async (req, res) => {
       finalDiscountValue = coupon.value;
     }
 
-    const fees = feeIds?.length ? await Fee.find({ _id: { $in: feeIds }, active: true }) : [];
+    // Mandatory fees always apply; only non-mandatory fees can be opted out
+    // of by the cashier, so ignore exclusion attempts on mandatory ones.
+    const allFees = await Fee.find({ active: true });
+    const safeExcludedFeeIds = excludedFeeIds?.length
+      ? allFees.filter((f) => !f.mandatory && excludedFeeIds.includes(String(f._id))).map((f) => String(f._id))
+      : [];
+    const fees = allFees.filter((f) => !safeExcludedFeeIds.includes(String(f._id)));
 
     const totals = await computeOrderTotals({
       items,
@@ -60,6 +77,7 @@ export const createOrder = async (req, res) => {
       discountValue: finalDiscountValue,
       fees,
       tipAmount,
+      excludedTaxIds,
     });
 
     const tokenDate = todayKey();

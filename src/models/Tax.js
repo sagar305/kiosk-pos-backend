@@ -6,6 +6,7 @@ const taxSchema = new mongoose.Schema(
     name: { type: String, required: true },
     percent: { type: Number, required: true },
     active: { type: Boolean, default: true },
+    mandatory: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
