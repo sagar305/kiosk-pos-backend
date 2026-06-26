@@ -1,7 +1,6 @@
 import Ingredient from '../models/Ingredient.js';
 import StockLog from '../models/StockLog.js';
 import StockBatch from '../models/StockBatch.js';
-import PurchaseOrder from '../models/PurchaseOrder.js';
 
 export const listIngredients = async (req, res) => res.json(await Ingredient.find());
 
@@ -34,17 +33,6 @@ export const updateIngredient = async (req, res) => {
   const ingredient = await Ingredient.findByIdAndUpdate(req.params.id, req.body, { new: true });
   if (!ingredient) return res.status(404).json({ error: 'Not found' });
   res.json(ingredient);
-};
-
-export const deleteIngredient = async (req, res) => {
-  const poCount = await PurchaseOrder.countDocuments({ ingredient: req.params.id });
-  if (poCount > 0) {
-    return res
-      .status(400)
-      .json({ error: 'Cannot delete an ingredient with purchase order history. Deactivate it instead.' });
-  }
-  await Ingredient.findByIdAndDelete(req.params.id);
-  res.json({ ok: true });
 };
 
 // Manual stock adjustment (e.g. wastage, stock count correction), independent

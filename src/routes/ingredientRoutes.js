@@ -4,7 +4,6 @@ import {
   listLowStock,
   createIngredient,
   updateIngredient,
-  deleteIngredient,
   adjustStock,
   listStockLogs,
   listNearestExpiry,
@@ -21,7 +20,6 @@ router.get('/stock-logs', listStockLogs);
 router.get('/nearest-expiry', listNearestExpiry);
 router.post('/', createIngredient);
 router.patch('/:id', updateIngredient);
-router.delete('/:id', deleteIngredient);
 router.post('/:id/adjust', adjustStock);
 
 export default router;
