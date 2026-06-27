@@ -7,7 +7,7 @@ import { nextDailySequence } from '../models/Counter.js';
 import { computeOrderTotals } from '../services/orderTotalsService.js';
 import { consumeRecipeForItems, restockRecipeForItems } from '../services/inventoryService.js';
 import { broadcast } from '../services/sseService.js';
-import { resolveSelectedOptions } from '../services/menuService.js';
+import { resolveSelectedOptions, resolveSelectedComboItems } from '../services/menuService.js';
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -86,13 +86,15 @@ export const createOrder = async (req, res) => {
     const tokenItems = items.map((i) => {
       const product = products.find((p) => String(p._id) === String(i.product));
       const { selected, priceDelta } = resolveSelectedOptions(product, i.selectedOptions || []);
+      const { selected: selectedCombo, priceDelta: comboDelta } = resolveSelectedComboItems(product, i.selectedComboItems || []);
       return {
         product: i.product,
         name: product.name,
-        price: product.price + priceDelta,
+        price: product.price + priceDelta + comboDelta,
         qty: i.qty,
         notes: i.notes || '',
         selectedOptions: selected,
+        comboItems: selectedCombo,
       };
     });
 
@@ -119,6 +121,7 @@ export const createOrder = async (req, res) => {
       qty: i.qty,
       product: products.find((p) => String(p._id) === String(i.product)),
       selectedOptions: i.selectedOptions || [],
+      selectedComboItems: i.selectedComboItems || [],
     }));
     const oversoldIngredients = await consumeRecipeForItems(itemsForInventory, {
       businessId: req.businessId,
@@ -211,6 +214,7 @@ export const cancelOrder = async (req, res) => {
       qty: ti.qty,
       product: ti.product,
       selectedOptions: ti.selectedOptions?.map((o) => o.option) || [],
+      selectedComboItems: ti.comboItems?.map((c) => c.comboItemId) || [],
     })),
     { tokenId: token._id, createdBy: req.user._id }
   );

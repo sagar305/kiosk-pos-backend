@@ -15,6 +15,7 @@ function toKdsView(token) {
       qty: i.qty,
       notes: i.notes,
       selectedOptions: i.selectedOptions,
+      comboItems: i.comboItems,
       itemStatus: i.itemStatus,
     })),
     createdAt: token.createdAt,

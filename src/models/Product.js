@@ -38,16 +38,14 @@ const customisationGroupSchema = new mongoose.Schema(
   { timestamps: false }
 );
 
-// A combo bundles a fixed quantity of other products at a special price
-// (the combo's own `price` field). Ingredient consumption is the sum of the
-// bundled products' own recipes.
-const comboItemSchema = new mongoose.Schema(
-  {
-    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
-    qty: { type: Number, default: 1 },
-  },
-  { _id: false }
-);
+// A combo's bundled items are optional add-ons on top of the combo's own
+// base price/recipe: choosing one at order time adds `priceDelta` to the
+// price and consumes the bundled product's recipe (qty times).
+const comboItemSchema = new mongoose.Schema({
+  product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+  qty: { type: Number, default: 1 },
+  priceDelta: { type: Number, default: 0 },
+});
 
 const productSchema = new mongoose.Schema(
   {

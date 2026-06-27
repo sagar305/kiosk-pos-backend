@@ -14,6 +14,20 @@ const selectedOptionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// A combo bundled item the customer opted into, snapshotted at order time
+// (name/priceDelta recorded here too, since the product's own combo item
+// could change later).
+const selectedComboItemSchema = new mongoose.Schema(
+  {
+    comboItemId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },
+    name: { type: String, required: true },
+    qty: { type: Number, default: 1 },
+    priceDelta: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
 const itemSchema = new mongoose.Schema(
   {
     product: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
@@ -22,6 +36,7 @@ const itemSchema = new mongoose.Schema(
     qty: { type: Number, required: true, default: 1 },
     notes: { type: String, default: '' },
     selectedOptions: { type: [selectedOptionSchema], default: [] },
+    comboItems: { type: [selectedComboItemSchema], default: [] },
     itemStatus: {
       type: String,
       enum: ['pending', 'preparing', 'ready', 'unavailable'],

@@ -45,7 +45,7 @@ export async function consumeRecipeForItems(items, { businessId, tokenId, create
 
   for (const item of items) {
     if (!item.product) continue;
-    const recipe = getEffectiveRecipe(item.product, item.selectedOptions || []);
+    const recipe = getEffectiveRecipe(item.product, item.selectedOptions || [], item.selectedComboItems || []);
     for (const line of recipe) {
       const ingId = String(line.ingredient);
       usage.set(ingId, (usage.get(ingId) || 0) + line.qty * item.qty);
@@ -103,7 +103,7 @@ export async function restockRecipeForItems(items, { tokenId, createdBy }) {
   const usage = new Map();
   for (const item of items) {
     if (!item.product) continue;
-    const recipe = getEffectiveRecipe(item.product, item.selectedOptions || []);
+    const recipe = getEffectiveRecipe(item.product, item.selectedOptions || [], item.selectedComboItems || []);
     for (const line of recipe) {
       const ingId = String(line.ingredient);
       usage.set(ingId, (usage.get(ingId) || 0) + line.qty * item.qty);
