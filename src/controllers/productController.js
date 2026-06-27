@@ -17,7 +17,7 @@ export const listProducts = async (req, res) => {
     .populate('category')
     .populate('taxIds')
     .populate('recipe.ingredient')
-    .populate('comboItems.product', 'name price image');
+    .populate('comboItems.product', 'name price image customisations recipe');
   res.json(products);
 };
 

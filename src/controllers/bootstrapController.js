@@ -17,7 +17,7 @@ export const getBootstrap = async (req, res) => {
       .populate('category')
       .populate('taxIds')
       .populate('recipe.ingredient')
-      .populate('comboItems.product', 'name price image'),
+      .populate('comboItems.product', 'name price image customisations recipe'),
     Category.find(),
     Ingredient.find(),
     Tax.find({ active: true }),
