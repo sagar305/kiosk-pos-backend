@@ -29,12 +29,21 @@ export const salesReport = async (req, res) => {
 
 export const ordersReport = async (req, res) => {
   const start = rangeStart(req.query.period);
-  const tokens = await Token.find({ createdAt: { $gte: start } });
+  const tokens = await Token.find({ createdAt: { $gte: start } }).sort({ createdAt: -1 });
   res.json({
     total: tokens.length,
     completed: tokens.filter((t) => t.status === 'completed').length,
     cancelled: tokens.filter((t) => t.status === 'cancelled').length,
     refunded: tokens.filter((t) => t.refundAmount > 0).length,
+    orders: tokens.map((t) => ({
+      _id: t._id,
+      tokenNumber: t.tokenNumber,
+      customerName: t.customerName,
+      total: t.total,
+      status: t.status,
+      paymentStatus: t.paymentStatus,
+      createdAt: t.createdAt,
+    })),
   });
 };
 
