@@ -7,8 +7,9 @@
 // `selectedOptionIds` is the list of customisation option _ids chosen for
 // this line (from Product.customisations[].options[]._id).
 export function getEffectiveRecipe(product, selectedOptionIds = []) {
+  const lines = [...(product.recipe || [])];
+
   if (product.type === 'combo') {
-    const lines = [];
     for (const comboItem of product.comboItems || []) {
       const sub = comboItem.product;
       if (!sub) continue;
@@ -16,10 +17,10 @@ export function getEffectiveRecipe(product, selectedOptionIds = []) {
         lines.push({ ingredient: line.ingredient, qty: line.qty * comboItem.qty });
       }
     }
-    return lines;
   }
 
-  const lines = [...(product.recipe || [])];
+  // Customisation options can be attached to combo products too (e.g. an
+  // optional add-on), so resolve them regardless of product type.
   for (const group of product.customisations || []) {
     for (const option of group.options || []) {
       if (selectedOptionIds.some((id) => String(id) === String(option._id))) {
