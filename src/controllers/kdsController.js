@@ -14,6 +14,7 @@ function toKdsView(token) {
       name: i.name,
       qty: i.qty,
       notes: i.notes,
+      selectedOptions: i.selectedOptions,
       itemStatus: i.itemStatus,
     })),
     createdAt: token.createdAt,
