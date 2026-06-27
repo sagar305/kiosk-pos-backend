@@ -17,6 +17,8 @@ const businessSchema = new mongoose.Schema(
       cashierCanRefundByDefault: { type: Boolean, default: false },
       lowStockAlertEnabled: { type: Boolean, default: true },
       autoCreatePurchaseOrder: { type: Boolean, default: true },
+      autoPrintReceipt: { type: Boolean, default: true },
+      manualDrawerOpenLocked: { type: Boolean, default: false },
     },
   },
   { timestamps: true }
