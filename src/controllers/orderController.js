@@ -214,7 +214,11 @@ export const cancelOrder = async (req, res) => {
       qty: ti.qty,
       product: ti.product,
       selectedOptions: ti.selectedOptions?.map((o) => o.option) || [],
-      selectedComboItems: ti.comboItems?.map((c) => c.comboItemId) || [],
+      selectedComboItems:
+        ti.comboItems?.map((c) => ({
+          comboItemId: c.comboItemId,
+          selectedOptions: c.selectedOptions?.map((o) => o.option) || [],
+        })) || [],
     })),
     { tokenId: token._id, createdBy: req.user._id }
   );

@@ -24,6 +24,9 @@ const selectedComboItemSchema = new mongoose.Schema(
     name: { type: String, required: true },
     qty: { type: Number, default: 1 },
     priceDelta: { type: Number, default: 0 },
+    // Customisations chosen for the bundled sub-product itself (e.g. a
+    // required "Size" group on the Paneer Sandwich included in a combo).
+    selectedOptions: { type: [selectedOptionSchema], default: [] },
   },
   { _id: false }
 );
