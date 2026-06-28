@@ -5,6 +5,7 @@ import Ingredient from '../models/Ingredient.js';
 import Product from '../models/Product.js';
 import Outlet from '../models/Outlet.js';
 import User from '../models/User.js';
+import Token from '../models/Token.js';
 import { toStockQty } from '../utils/unitConversion.js';
 import { getAnthropicClient } from './anthropicClient.js';
 import { runWithTenant, getBusinessId } from '../utils/tenantContext.js';
@@ -74,6 +75,13 @@ is what search_ingredients/create_ingredient return as "recipeUnit".
 Keep replies short and conversational. If the user asks to look something up
 (e.g. "how many products do we have", "show low margin items") instead of
 creating a product, use the read-only tools to answer directly.
+
+For order questions (e.g. "show today's orders", "what's in token 42",
+"get order detail"), use list_orders to find candidates (by token number,
+date, or status) and get_order to fetch the full detail of one order —
+items, customisations, payments, totals, and status. Summarize order detail
+clearly: items with qty/price, discount/tax/fees, total, payment status, and
+order status.
 
 You can also CREATE AN OUTLET or CREATE A STAFF MEMBER when asked:
 - For a new outlet: ask for the outlet name, a short code (used on receipts),
@@ -152,6 +160,28 @@ const TOOL_DEFINITIONS = [
         lastPurchaseDate: { type: 'string', description: 'ISO date of the most recent purchase, optional.' },
       },
       required: ['name', 'unit', 'costPerUnit'],
+    },
+  },
+  {
+    name: 'list_orders',
+    description:
+      'Lists orders (tokens) for the currently selected outlet, optionally filtered by status, date or token number. Returns a summary per order, not full item detail.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['pending', 'preparing', 'ready', 'completed', 'cancelled'] },
+        tokenDate: { type: 'string', description: 'YYYY-MM-DD, optional.' },
+        tokenNumber: { type: 'number', description: 'Optional.' },
+      },
+    },
+  },
+  {
+    name: 'get_order',
+    description: 'Gets the full detail of one order (items, customisations, combo items, payments, totals, status) by its id.',
+    input_schema: {
+      type: 'object',
+      properties: { orderId: { type: 'string' } },
+      required: ['orderId'],
     },
   },
   {
@@ -306,6 +336,8 @@ const OUTLET_SCOPED_TOOLS = new Set([
   'create_ingredient',
   'compute_cogs',
   'create_product',
+  'list_orders',
+  'get_order',
 ]);
 
 const OWNER_ONLY_TOOLS = new Set(['create_outlet', 'create_staff']);
@@ -383,6 +415,59 @@ async function executeTool(session, name, input) {
         reorderQty: ingredient.reorderQty,
         packSize: ingredient.packSize,
         packLabel: ingredient.packLabel,
+      };
+    }
+
+    case 'list_orders': {
+      const filter = {};
+      if (input.status) filter.status = input.status;
+      if (input.tokenDate) filter.tokenDate = input.tokenDate;
+      if (input.tokenNumber != null) filter.tokenNumber = input.tokenNumber;
+      const tokens = await Token.find(filter).sort({ createdAt: -1 }).limit(20);
+      return tokens.map((t) => ({
+        id: t._id,
+        tokenNumber: t.tokenNumber,
+        tokenDate: t.tokenDate,
+        status: t.status,
+        paymentStatus: t.paymentStatus,
+        total: t.total,
+        itemCount: t.items.length,
+        customerName: t.customerName,
+      }));
+    }
+
+    case 'get_order': {
+      const token = await Token.findById(input.orderId).populate('cashier', 'name').populate('items.product', 'name');
+      if (!token) return { error: `Unknown orderId ${input.orderId}` };
+      return {
+        id: token._id,
+        tokenNumber: token.tokenNumber,
+        tokenDate: token.tokenDate,
+        status: token.status,
+        paymentStatus: token.paymentStatus,
+        customerName: token.customerName,
+        customerMobile: token.customerMobile,
+        cashier: token.cashier?.name,
+        items: token.items.map((i) => ({
+          name: i.name,
+          qty: i.qty,
+          price: i.price,
+          notes: i.notes,
+          itemStatus: i.itemStatus,
+          selectedOptions: i.selectedOptions.map((o) => ({ group: o.group, name: o.name, priceDelta: o.priceDelta })),
+          comboItems: i.comboItems.map((c) => ({ name: c.name, qty: c.qty, priceDelta: c.priceDelta })),
+        })),
+        itemsSubtotal: token.itemsSubtotal,
+        discountTotal: token.discountTotal,
+        discountReason: token.discountReason,
+        taxTotal: token.taxTotal,
+        feesTotal: token.feesTotal,
+        tipAmount: token.tipAmount,
+        total: token.total,
+        payments: token.payments.map((p) => ({ method: p.method, amount: p.amount, reference: p.reference })),
+        refundAmount: token.refundAmount,
+        refundReason: token.refundReason,
+        cancelledReason: token.cancelledReason,
       };
     }
 
