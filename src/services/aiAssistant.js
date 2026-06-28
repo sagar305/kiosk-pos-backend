@@ -1,8 +1,10 @@
+import bcrypt from 'bcryptjs';
 import Category from '../models/Category.js';
 import Tax from '../models/Tax.js';
 import Ingredient from '../models/Ingredient.js';
 import Product from '../models/Product.js';
 import Outlet from '../models/Outlet.js';
+import User from '../models/User.js';
 import { toStockQty } from '../utils/unitConversion.js';
 import { getAnthropicClient } from './anthropicClient.js';
 import { runWithTenant, getBusinessId } from '../utils/tenantContext.js';
@@ -71,7 +73,21 @@ is what search_ingredients/create_ingredient return as "recipeUnit".
 
 Keep replies short and conversational. If the user asks to look something up
 (e.g. "how many products do we have", "show low margin items") instead of
-creating a product, use the read-only tools to answer directly.`;
+creating a product, use the read-only tools to answer directly.
+
+You can also CREATE AN OUTLET or CREATE A STAFF MEMBER when asked:
+- For a new outlet: ask for the outlet name, a short code (used on receipts),
+  and optionally an address. Confirm the details, then call create_outlet.
+  A newly created outlet is not auto-selected — if the user wants to keep
+  working in it, call select_outlet with it afterwards.
+- For a new staff member: ask for their name, email, a password, their role
+  (owner / pos_manager / kitchen_staff), and which outlet(s) they should have
+  access to (call list_outlets to show options; owners implicitly have access
+  to all outlets so outlets are optional for that role). Mobile number and
+  permission overrides (canRefund, canMarkProductUnavailable) are optional —
+  only ask if the user wants to set them. Summarize and confirm before calling
+  create_staff. Only an owner may create outlets or staff members — if the
+  current user isn't an owner, say so instead of attempting it.`;
 
 const TOOL_DEFINITIONS = [
   {
@@ -128,8 +144,49 @@ const TOOL_DEFINITIONS = [
         unit: { type: 'string', enum: ['g', 'kg', 'ml', 'l', 'pc'], description: 'Stock unit.' },
         costPerUnit: { type: 'number', description: 'Cost per one stock unit.' },
         stockQty: { type: 'number', description: 'Opening stock quantity, optional.' },
+        thresholdQty: { type: 'number', description: 'Low-stock alert threshold, optional.' },
+        reorderQty: { type: 'number', description: 'Usual reorder quantity, optional.' },
+        packSize: { type: 'number', description: 'Units per pack as usually received, e.g. 1 packet = 40 pc. Optional, defaults to 1.' },
+        packLabel: { type: 'string', description: 'Label for the pack, e.g. "packet" or "box". Optional.' },
+        lastPurchasePrice: { type: 'number', description: 'Most recent purchase price, optional.' },
+        lastPurchaseDate: { type: 'string', description: 'ISO date of the most recent purchase, optional.' },
       },
       required: ['name', 'unit', 'costPerUnit'],
+    },
+  },
+  {
+    name: 'create_outlet',
+    description: 'Creates a new outlet for this business. Owner only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        code: { type: 'string', description: 'Short human-friendly code shown on receipts and the Ready Pickup screen URL.' },
+        address: { type: 'string' },
+      },
+      required: ['name', 'code'],
+    },
+  },
+  {
+    name: 'create_staff',
+    description: 'Creates a new staff user account. Owner only.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        email: { type: 'string' },
+        password: { type: 'string' },
+        role: { type: 'string', enum: ['owner', 'pos_manager', 'kitchen_staff'] },
+        mobile: { type: 'string', description: 'Optional.' },
+        outletIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Outlets this staff member can work at. First one becomes their default. Optional/ignored for owners.',
+        },
+        canRefund: { type: 'boolean', description: 'Permission override, optional — falls back to business default when unset.' },
+        canMarkProductUnavailable: { type: 'boolean', description: 'Permission override, optional, defaults to true.' },
+      },
+      required: ['name', 'email', 'password', 'role'],
     },
   },
   {
@@ -251,9 +308,14 @@ const OUTLET_SCOPED_TOOLS = new Set([
   'create_product',
 ]);
 
+const OWNER_ONLY_TOOLS = new Set(['create_outlet', 'create_staff']);
+
 async function executeTool(session, name, input) {
   if (OUTLET_SCOPED_TOOLS.has(name) && !session.outletId) {
     return { error: 'No outlet selected yet — call list_outlets and select_outlet first.' };
+  }
+  if (OWNER_ONLY_TOOLS.has(name) && session.role !== 'owner') {
+    return { error: 'Only an owner can do this.' };
   }
 
   switch (name) {
@@ -303,6 +365,12 @@ async function executeTool(session, name, input) {
         unit: input.unit,
         costPerUnit: input.costPerUnit,
         stockQty: input.stockQty || 0,
+        thresholdQty: input.thresholdQty || 0,
+        reorderQty: input.reorderQty || 0,
+        packSize: input.packSize || 1,
+        packLabel: input.packLabel || '',
+        lastPurchasePrice: input.lastPurchasePrice,
+        lastPurchaseDate: input.lastPurchaseDate ? new Date(input.lastPurchaseDate) : undefined,
       });
       return {
         id: ingredient._id,
@@ -310,6 +378,47 @@ async function executeTool(session, name, input) {
         unit: ingredient.unit,
         recipeUnit: ingredient.recipeUnit,
         costPerUnit: ingredient.costPerUnit,
+        stockQty: ingredient.stockQty,
+        thresholdQty: ingredient.thresholdQty,
+        reorderQty: ingredient.reorderQty,
+        packSize: ingredient.packSize,
+        packLabel: ingredient.packLabel,
+      };
+    }
+
+    case 'create_outlet': {
+      const outlet = await Outlet.create({
+        name: input.name,
+        code: input.code,
+        address: input.address,
+      });
+      return { id: outlet._id, name: outlet.name, code: outlet.code, address: outlet.address };
+    }
+
+    case 'create_staff': {
+      if (!['owner', 'pos_manager', 'kitchen_staff'].includes(input.role)) {
+        return { error: `Invalid role ${input.role}` };
+      }
+      const hash = await bcrypt.hash(input.password, 10);
+      const user = await User.create({
+        name: input.name,
+        email: input.email,
+        password: hash,
+        role: input.role,
+        mobile: input.mobile,
+        outlets: input.outletIds || [],
+        permissions: {
+          canRefund: input.canRefund ?? null,
+          canMarkProductUnavailable: input.canMarkProductUnavailable ?? true,
+        },
+      });
+      return {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        mobile: user.mobile,
+        outletIds: user.outlets,
       };
     }
 
@@ -387,8 +496,9 @@ async function executeTool(session, name, input) {
   }
 }
 
-export async function runAssistantTurn(session, userMessage) {
+export async function runAssistantTurn(session, userMessage, userRole) {
   const anthropic = getAnthropicClient();
+  session.role = userRole;
   session.messages.push({ role: 'user', content: userMessage });
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
