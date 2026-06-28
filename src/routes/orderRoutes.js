@@ -9,6 +9,7 @@ import {
   completeOrder,
   reprintOrder,
   searchCustomers,
+  sendReceiptWhatsApp,
 } from '../controllers/orderController.js';
 import { requireAuth, requireOutlet } from '../middlewares/authMiddleware.js';
 import { permit } from '../middlewares/roleMiddleware.js';
@@ -25,5 +26,6 @@ router.post('/:id/payments', recordPayment);
 router.post('/:id/cancel', cancelOrder);
 router.post('/:id/refund', refundOrder);
 router.post('/:id/complete', completeOrder);
+router.post('/:id/send-receipt-whatsapp', sendReceiptWhatsApp);
 
 export default router;

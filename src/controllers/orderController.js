@@ -8,6 +8,7 @@ import { computeOrderTotals } from '../services/orderTotalsService.js';
 import { consumeRecipeForItems, restockRecipeForItems } from '../services/inventoryService.js';
 import { broadcast } from '../services/sseService.js';
 import { resolveSelectedOptions, resolveSelectedComboItems } from '../services/menuService.js';
+import { formatReceiptMessage, sendWhatsAppReceipt, WhatsAppNotConfiguredError } from '../utils/whatsapp.js';
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -196,6 +197,28 @@ export const getOrder = async (req, res) => {
   const token = await Token.findById(req.params.id).populate('cashier', 'name').populate('items.product');
   if (!token) return res.status(404).json({ error: 'Not found' });
   res.json(token);
+};
+
+export const sendReceiptWhatsApp = async (req, res) => {
+  const token = await Token.findById(req.params.id);
+  if (!token) return res.status(404).json({ error: 'Not found' });
+  if (!token.customerMobile) {
+    return res.status(400).json({ error: 'This order has no customer mobile number on file' });
+  }
+
+  const business = await Business.findById(req.businessId);
+  const message = formatReceiptMessage(token, business);
+
+  try {
+    await sendWhatsAppReceipt(business, token.customerMobile, message);
+  } catch (err) {
+    if (err instanceof WhatsAppNotConfiguredError) {
+      return res.status(400).json({ error: err.message });
+    }
+    return res.status(502).json({ error: err.message });
+  }
+
+  res.json({ sent: true, simulate: process.env.SIMULATE === '1' });
 };
 
 export const cancelOrder = async (req, res) => {

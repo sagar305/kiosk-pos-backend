@@ -19,6 +19,17 @@ const businessSchema = new mongoose.Schema(
       autoCreatePurchaseOrder: { type: Boolean, default: true },
       autoPrintReceipt: { type: Boolean, default: true },
       manualDrawerOpenLocked: { type: Boolean, default: false },
+      // WhatsApp receipt sending via the Meta WhatsApp Cloud API. Each business
+      // brings its own phone_number_id + access token from its own Meta App;
+      // when SIMULATE=1 on the server, sends use the test* fields instead so a
+      // business can try the feature against Meta's test number before going live.
+      whatsapp: {
+        enabled: { type: Boolean, default: false },
+        phoneNumberId: { type: String, default: '' },
+        accessToken: { type: String, default: '' },
+        testPhoneNumberId: { type: String, default: '' },
+        testAccessToken: { type: String, default: '' },
+      },
     },
   },
   { timestamps: true }
