@@ -10,7 +10,7 @@ function key(businessId, sessionId) {
 export function getSession(businessId, sessionId) {
   const k = key(businessId, sessionId);
   if (!sessions.has(k)) {
-    sessions.set(k, { messages: [], lastCreatedProduct: null });
+    sessions.set(k, { messages: [], lastCreatedProduct: null, outletId: null });
   }
   return sessions.get(k);
 }

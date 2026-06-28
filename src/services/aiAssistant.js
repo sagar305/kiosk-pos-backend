@@ -2,8 +2,10 @@ import Category from '../models/Category.js';
 import Tax from '../models/Tax.js';
 import Ingredient from '../models/Ingredient.js';
 import Product from '../models/Product.js';
+import Outlet from '../models/Outlet.js';
 import { toStockQty } from '../utils/unitConversion.js';
 import { getAnthropicClient } from './anthropicClient.js';
+import { runWithTenant, getBusinessId } from '../utils/tenantContext.js';
 
 const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const MAX_TOOL_ROUNDS = 8;
@@ -20,6 +22,15 @@ const SYSTEM_PROMPT = `You are the in-app assistant for a restaurant/kiosk POS s
 owner/manager create a new menu product (or combo) through conversation, and
 can also answer questions about existing products, categories and stock using
 the read-only tools.
+
+Before anything else, you must know which outlet you're working in — products,
+categories and ingredients are all specific to one outlet. As your very first
+action in a new conversation, call list_outlets.
+- If it returns exactly one outlet, call select_outlet with it right away and
+  tell the user which outlet you're using.
+- If it returns more than one, ask the user which outlet this is for (by
+  name) before doing anything else, then call select_outlet with their choice.
+Do not call any other tool until an outlet has been selected.
 
 When the user wants to CREATE A PRODUCT, follow this flow, asking one thing at
 a time (don't dump every question in one message):
@@ -63,6 +74,21 @@ Keep replies short and conversational. If the user asks to look something up
 creating a product, use the read-only tools to answer directly.`;
 
 const TOOL_DEFINITIONS = [
+  {
+    name: 'list_outlets',
+    description: 'List all outlets for this business. Call this first, before any other tool.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'select_outlet',
+    description:
+      'Selects which outlet all subsequent product/category/ingredient operations apply to. Must be called once, after list_outlets, before any other tool.',
+    input_schema: {
+      type: 'object',
+      properties: { outletId: { type: 'string' } },
+      required: ['outletId'],
+    },
+  },
   {
     name: 'list_categories',
     description: 'List all existing menu categories for this business/outlet.',
@@ -216,8 +242,33 @@ function recipeLineCost(ingredient, qty) {
   return toStockQty(ingredient.unit, qty) * ingredient.costPerUnit;
 }
 
-async function executeTool(name, input) {
+const OUTLET_SCOPED_TOOLS = new Set([
+  'list_categories',
+  'create_category',
+  'search_ingredients',
+  'create_ingredient',
+  'compute_cogs',
+  'create_product',
+]);
+
+async function executeTool(session, name, input) {
+  if (OUTLET_SCOPED_TOOLS.has(name) && !session.outletId) {
+    return { error: 'No outlet selected yet — call list_outlets and select_outlet first.' };
+  }
+
   switch (name) {
+    case 'list_outlets': {
+      const outlets = await Outlet.find({ active: true }).sort({ createdAt: 1 });
+      return outlets.map((o) => ({ id: o._id, name: o.name, code: o.code }));
+    }
+
+    case 'select_outlet': {
+      const outlet = await Outlet.findById(input.outletId);
+      if (!outlet) return { error: `Unknown outletId ${input.outletId}` };
+      session.outletId = String(outlet._id);
+      return { id: outlet._id, name: outlet.name, code: outlet.code };
+    }
+
     case 'list_categories': {
       const categories = await Category.find({ active: true }).sort({ sortOrder: 1, name: 1 });
       return categories.map((c) => ({ id: c._id, name: c.name }));
@@ -364,7 +415,12 @@ export async function runAssistantTurn(session, userMessage) {
     for (const toolUse of toolUses) {
       let result;
       try {
-        result = await executeTool(toolUse.name, toolUse.input);
+        // Scope outlet-owned reads/writes to whichever outlet the assistant
+        // selected for this conversation, regardless of the request's own
+        // outlet header (the AI flow picks its own outlet, see select_outlet).
+        result = await runWithTenant(getBusinessId(), session.outletId, () =>
+          executeTool(session, toolUse.name, toolUse.input)
+        );
       } catch (err) {
         result = { error: err.message };
       }
