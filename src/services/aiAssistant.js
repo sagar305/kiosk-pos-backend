@@ -6,6 +6,7 @@ import Product from '../models/Product.js';
 import Outlet from '../models/Outlet.js';
 import User from '../models/User.js';
 import Token from '../models/Token.js';
+import Expense from '../models/Expense.js';
 import { toStockQty } from '../utils/unitConversion.js';
 import { getAnthropicClient } from './anthropicClient.js';
 import { runWithTenant, getBusinessId } from '../utils/tenantContext.js';
@@ -95,7 +96,24 @@ You can also CREATE AN OUTLET or CREATE A STAFF MEMBER when asked:
   permission overrides (canRefund, canMarkProductUnavailable) are optional —
   only ask if the user wants to set them. Summarize and confirm before calling
   create_staff. Only an owner may create outlets or staff members — if the
-  current user isn't an owner, say so instead of attempting it.`;
+  current user isn't an owner, say so instead of attempting it.
+
+For "how are we doing" / sales / profitability questions, call sales_report
+with a period (today/week/month/year, default today) — it gives gross/net
+sales, refunds, order count, top/least selling items and a payment-method
+breakdown for the selected outlet.
+
+To record a cost, call add_expense (category, amount, description, date —
+date optional, defaults to now).
+
+For questions that aren't a single stored number — "are we actually
+profitable", "what's eating our margin", "is anything below threshold" —
+call get_insights with a period. It computes things the app doesn't store
+directly: estimated net profit (net sales minus COGS of items actually sold
+minus expenses in the period), profit margin %, average order value, the
+single busiest day, the expense-to-sales ratio, and which active products
+currently have the lowest margin % (so you can flag underpriced items).
+Use this instead of trying to combine numbers yourself.`;
 
 const TOOL_DEFINITIONS = [
   {
@@ -182,6 +200,38 @@ const TOOL_DEFINITIONS = [
       type: 'object',
       properties: { orderId: { type: 'string' } },
       required: ['orderId'],
+    },
+  },
+  {
+    name: 'sales_report',
+    description:
+      'Sales summary for the selected outlet over a period: gross/net sales, refunds, order count, top/least selling items, payment-method breakdown.',
+    input_schema: {
+      type: 'object',
+      properties: { period: { type: 'string', enum: ['today', 'week', 'month', 'year'], default: 'today' } },
+    },
+  },
+  {
+    name: 'add_expense',
+    description: 'Records an expense for the selected outlet.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['stock_purchase', 'wastage', 'utilities', 'salary', 'rent', 'other'] },
+        amount: { type: 'number' },
+        description: { type: 'string' },
+        date: { type: 'string', description: 'ISO date, optional, defaults to now.' },
+      },
+      required: ['category', 'amount'],
+    },
+  },
+  {
+    name: 'get_insights',
+    description:
+      'Computes derived business insights for the selected outlet that aren\'t directly stored anywhere: estimated net profit (net sales minus COGS of items sold minus expenses), profit margin %, average order value, busiest day, expense-to-sales ratio, and the lowest-margin active products. Use this for any "are we profitable / what should we fix" style question.',
+    input_schema: {
+      type: 'object',
+      properties: { period: { type: 'string', enum: ['today', 'week', 'month', 'year'], default: 'today' } },
     },
   },
   {
@@ -329,6 +379,16 @@ function recipeLineCost(ingredient, qty) {
   return toStockQty(ingredient.unit, qty) * ingredient.costPerUnit;
 }
 
+function rangeStart(period) {
+  const now = new Date();
+  const start = new Date(now);
+  if (period === 'week') start.setDate(now.getDate() - 7);
+  else if (period === 'month') start.setMonth(now.getMonth() - 1);
+  else if (period === 'year') start.setFullYear(now.getFullYear() - 1);
+  else start.setHours(0, 0, 0, 0);
+  return start;
+}
+
 const OUTLET_SCOPED_TOOLS = new Set([
   'list_categories',
   'create_category',
@@ -338,6 +398,9 @@ const OUTLET_SCOPED_TOOLS = new Set([
   'create_product',
   'list_orders',
   'get_order',
+  'sales_report',
+  'add_expense',
+  'get_insights',
 ]);
 
 const OWNER_ONLY_TOOLS = new Set(['create_outlet', 'create_staff']);
@@ -468,6 +531,103 @@ async function executeTool(session, name, input) {
         refundAmount: token.refundAmount,
         refundReason: token.refundReason,
         cancelledReason: token.cancelledReason,
+      };
+    }
+
+    case 'sales_report': {
+      const period = input.period || 'today';
+      const start = rangeStart(period);
+      const tokens = await Token.find({ createdAt: { $gte: start }, status: { $ne: 'cancelled' } });
+      const grossSales = tokens.reduce((sum, t) => sum + t.total, 0);
+      const refunds = tokens.reduce((sum, t) => sum + (t.refundAmount || 0), 0);
+
+      const counts = new Map();
+      const payments = { cash: 0, upi: 0, card: 0, wallet: 0 };
+      for (const t of tokens) {
+        for (const item of t.items) counts.set(item.name, (counts.get(item.name) || 0) + item.qty);
+        for (const p of t.payments) payments[p.method] = (payments[p.method] || 0) + p.amount;
+      }
+      const ranked = [...counts.entries()].map(([name, qty]) => ({ name, qty })).sort((a, b) => b.qty - a.qty);
+
+      return {
+        period,
+        orderCount: tokens.length,
+        grossSales: round2(grossSales),
+        refunds: round2(refunds),
+        netSales: round2(grossSales - refunds),
+        topSelling: ranked.slice(0, 5),
+        leastSelling: ranked.slice(-5).reverse(),
+        paymentBreakdown: Object.fromEntries(Object.entries(payments).map(([k, v]) => [k, round2(v)])),
+      };
+    }
+
+    case 'add_expense': {
+      const expense = await Expense.create({
+        category: input.category,
+        amount: input.amount,
+        description: input.description,
+        date: input.date ? new Date(input.date) : undefined,
+      });
+      return { id: expense._id, category: expense.category, amount: expense.amount, date: expense.date };
+    }
+
+    case 'get_insights': {
+      const period = input.period || 'today';
+      const start = rangeStart(period);
+      const tokens = await Token.find({ createdAt: { $gte: start }, status: { $ne: 'cancelled' } }).populate(
+        'items.product',
+        'cogs price marginPercent name'
+      );
+      const expenses = await Expense.find({ date: { $gte: start } });
+
+      const grossSales = tokens.reduce((sum, t) => sum + t.total, 0);
+      const refunds = tokens.reduce((sum, t) => sum + (t.refundAmount || 0), 0);
+      const netSales = grossSales - refunds;
+      const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+      let cogsSold = 0;
+      for (const t of tokens) {
+        for (const item of t.items) {
+          if (item.product?.cogs != null) cogsSold += item.product.cogs * item.qty;
+        }
+      }
+
+      const netProfit = netSales - cogsSold - totalExpenses;
+      const profitMarginPercent = netSales > 0 ? round2((netProfit / netSales) * 100) : null;
+      const averageOrderValue = tokens.length > 0 ? round2(netSales / tokens.length) : 0;
+      const expenseToSalesPercent = netSales > 0 ? round2((totalExpenses / netSales) * 100) : null;
+
+      const byDay = new Map();
+      for (const t of tokens) {
+        const day = t.createdAt.toISOString().slice(0, 10);
+        byDay.set(day, (byDay.get(day) || 0) + t.total - (t.refundAmount || 0));
+      }
+      let busiestDay = null;
+      for (const [day, total] of byDay) {
+        if (!busiestDay || total > busiestDay.total) busiestDay = { date: day, total: round2(total) };
+      }
+
+      const activeProducts = await Product.find({ active: { $ne: false }, marginPercent: { $ne: null } })
+        .sort({ marginPercent: 1 })
+        .limit(5)
+        .select('name price cogs marginPercent');
+
+      return {
+        period,
+        netSales: round2(netSales),
+        cogsOfItemsSold: round2(cogsSold),
+        totalExpenses: round2(totalExpenses),
+        estimatedNetProfit: round2(netProfit),
+        profitMarginPercent,
+        averageOrderValue,
+        expenseToSalesPercent,
+        busiestDay,
+        lowestMarginProducts: activeProducts.map((p) => ({
+          name: p.name,
+          price: p.price,
+          cogs: p.cogs,
+          marginPercent: p.marginPercent,
+        })),
       };
     }
 
