@@ -12,7 +12,7 @@ export const chatWithAssistant = async (req, res) => {
     const sessionId = req.body.sessionId || crypto.randomUUID();
     const session = getSession(req.businessId, sessionId);
 
-    const { reply, createdProduct } = await runAssistantTurn(session, message, req.user.role);
+    const { reply, createdProduct } = await runAssistantTurn(session, message, req.user.role, req.user._id);
 
     res.json({ sessionId, reply, createdProduct });
   } catch (err) {

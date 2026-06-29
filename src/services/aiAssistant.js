@@ -7,6 +7,8 @@ import Outlet from '../models/Outlet.js';
 import User from '../models/User.js';
 import Token from '../models/Token.js';
 import Expense from '../models/Expense.js';
+import StockLog from '../models/StockLog.js';
+import StockBatch from '../models/StockBatch.js';
 import { toStockQty } from '../utils/unitConversion.js';
 import { getAnthropicClient } from './anthropicClient.js';
 import { runWithTenant, getBusinessId } from '../utils/tenantContext.js';
@@ -113,7 +115,27 @@ directly: estimated net profit (net sales minus COGS of items actually sold
 minus expenses in the period), profit margin %, average order value, the
 single busiest day, the expense-to-sales ratio, and which active products
 currently have the lowest margin % (so you can flag underpriced items).
-Use this instead of trying to combine numbers yourself.`;
+Use this instead of trying to combine numbers yourself.
+
+You can also EDIT existing products and ingredients, and RESTOCK ingredients:
+- To change a product (price, name, category, availability), call
+  search_products to find it by name and get its id, confirm what's
+  changing, then call update_product with just the fields that changed.
+- To deactivate/re-activate a product (stop/resume selling it without
+  deleting it), call update_product with available: false/true.
+- To change an ingredient's cost, threshold, reorder qty, pack size/label,
+  name or unit, call search_ingredients to find its id, then
+  update_ingredient with just the changed fields. This does NOT change
+  stock quantity — use restock_ingredient for that.
+- To add stock (e.g. "we received 5kg of flour", "add 20 cups"), find the
+  ingredient via search_ingredients, then call restock_ingredient with the
+  quantity received (always positive — use the ingredient's stock unit) and
+  an optional reason/expiry date. This logs the stock movement and its cost
+  as an expense automatically, same as the inventory screen does.
+- To check what's low, call list_low_stock — no outlet selection needed
+  beyond the one already chosen for this conversation.
+Always confirm the change with the user before calling update_product,
+update_ingredient or restock_ingredient.`;
 
 const TOOL_DEFINITIONS = [
   {
@@ -201,6 +223,69 @@ const TOOL_DEFINITIONS = [
       properties: { orderId: { type: 'string' } },
       required: ['orderId'],
     },
+  },
+  {
+    name: 'search_products',
+    description: 'Search existing products by name (case-insensitive partial match) to get their id, price, availability and category.',
+    input_schema: {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'update_product',
+    description: 'Updates one or more fields of an existing product. Only send the fields that changed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        productId: { type: 'string' },
+        name: { type: 'string' },
+        categoryId: { type: 'string' },
+        price: { type: 'number' },
+        available: { type: 'boolean' },
+      },
+      required: ['productId'],
+    },
+  },
+  {
+    name: 'update_ingredient',
+    description:
+      'Updates one or more fields of an existing ingredient (cost, threshold, reorder qty, pack size/label, name, unit). Does not change stock quantity — use restock_ingredient for that. Only send the fields that changed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ingredientId: { type: 'string' },
+        name: { type: 'string' },
+        unit: { type: 'string', enum: ['g', 'kg', 'ml', 'l', 'pc'] },
+        costPerUnit: { type: 'number' },
+        thresholdQty: { type: 'number' },
+        reorderQty: { type: 'number' },
+        packSize: { type: 'number' },
+        packLabel: { type: 'string' },
+      },
+      required: ['ingredientId'],
+    },
+  },
+  {
+    name: 'restock_ingredient',
+    description:
+      'Adds received stock to an ingredient (always a positive quantity, in the ingredient\'s stock unit) and logs it as a stock-purchase expense, mirroring the inventory screen\'s restock action.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ingredientId: { type: 'string' },
+        qty: { type: 'number', description: 'Positive quantity received, in the stock unit.' },
+        reason: { type: 'string', description: 'Optional note.' },
+        expiryDate: { type: 'string', description: 'ISO date, optional.' },
+      },
+      required: ['ingredientId', 'qty'],
+    },
+  },
+  {
+    name: 'list_low_stock',
+    description: 'Lists active ingredients at or below their low-stock threshold for the selected outlet.',
+    input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'sales_report',
@@ -401,6 +486,11 @@ const OUTLET_SCOPED_TOOLS = new Set([
   'sales_report',
   'add_expense',
   'get_insights',
+  'search_products',
+  'update_product',
+  'update_ingredient',
+  'restock_ingredient',
+  'list_low_stock',
 ]);
 
 const OWNER_ONLY_TOOLS = new Set(['create_outlet', 'create_staff']);
@@ -532,6 +622,89 @@ async function executeTool(session, name, input) {
         refundReason: token.refundReason,
         cancelledReason: token.cancelledReason,
       };
+    }
+
+    case 'search_products': {
+      const regex = new RegExp(input.query, 'i');
+      const products = await Product.find({ name: regex }).limit(10);
+      return products.map((p) => ({
+        id: p._id,
+        name: p.name,
+        price: p.price,
+        available: p.available,
+        category: p.category,
+      }));
+    }
+
+    case 'update_product': {
+      const update = {};
+      if (input.name !== undefined) update.name = input.name;
+      if (input.categoryId !== undefined) update.category = input.categoryId;
+      if (input.price !== undefined) update.price = input.price;
+      if (input.available !== undefined) update.available = input.available;
+      const product = await Product.findByIdAndUpdate(input.productId, update, { new: true });
+      if (!product) return { error: `Unknown productId ${input.productId}` };
+      return { id: product._id, name: product.name, price: product.price, available: product.available };
+    }
+
+    case 'update_ingredient': {
+      const update = {};
+      for (const field of ['name', 'unit', 'costPerUnit', 'thresholdQty', 'reorderQty', 'packSize', 'packLabel']) {
+        if (input[field] !== undefined) update[field] = input[field];
+      }
+      const ingredient = await Ingredient.findByIdAndUpdate(input.ingredientId, update, { new: true });
+      if (!ingredient) return { error: `Unknown ingredientId ${input.ingredientId}` };
+      return {
+        id: ingredient._id,
+        name: ingredient.name,
+        unit: ingredient.unit,
+        costPerUnit: ingredient.costPerUnit,
+        thresholdQty: ingredient.thresholdQty,
+        reorderQty: ingredient.reorderQty,
+        packSize: ingredient.packSize,
+        packLabel: ingredient.packLabel,
+      };
+    }
+
+    case 'restock_ingredient': {
+      if (!(input.qty > 0)) return { error: 'qty must be a positive number.' };
+      const ingredient = await Ingredient.findById(input.ingredientId);
+      if (!ingredient) return { error: `Unknown ingredientId ${input.ingredientId}` };
+
+      ingredient.stockQty += input.qty;
+      await ingredient.save();
+
+      await StockLog.create({
+        ingredient: ingredient._id,
+        type: 'adjustment',
+        qtyChange: input.qty,
+        reason: input.reason,
+        createdBy: session.userId,
+      });
+
+      await StockBatch.create({
+        ingredient: ingredient._id,
+        qty: input.qty,
+        expiryDate: input.expiryDate ? new Date(input.expiryDate) : undefined,
+        source: 'opening',
+      });
+
+      await Expense.create({
+        category: 'stock_purchase',
+        amount: round2(input.qty * ingredient.costPerUnit),
+        description: `Stock adjustment — ${ingredient.name} (+${input.qty} ${ingredient.unit})${input.reason ? `: ${input.reason}` : ''}`,
+        ingredient: ingredient._id,
+        createdBy: session.userId,
+      });
+
+      return { id: ingredient._id, name: ingredient.name, stockQty: ingredient.stockQty, unit: ingredient.unit };
+    }
+
+    case 'list_low_stock': {
+      const ingredients = await Ingredient.find({ active: true });
+      return ingredients
+        .filter((i) => i.stockQty <= i.thresholdQty)
+        .map((i) => ({ id: i._id, name: i.name, stockQty: i.stockQty, thresholdQty: i.thresholdQty, unit: i.unit }));
     }
 
     case 'sales_report': {
@@ -741,9 +914,10 @@ async function executeTool(session, name, input) {
   }
 }
 
-export async function runAssistantTurn(session, userMessage, userRole) {
+export async function runAssistantTurn(session, userMessage, userRole, userId) {
   const anthropic = getAnthropicClient();
   session.role = userRole;
+  session.userId = userId;
   session.messages.push({ role: 'user', content: userMessage });
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
