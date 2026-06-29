@@ -19,6 +19,8 @@ const businessSchema = new mongoose.Schema(
       autoCreatePurchaseOrder: { type: Boolean, default: true },
       autoPrintReceipt: { type: Boolean, default: true },
       manualDrawerOpenLocked: { type: Boolean, default: false },
+      // POS UI language; outlets may override this via Outlet.settings.language.
+      language: { type: String, default: 'en' },
     },
     aiSettings: {
       // Encrypted (see utils/encryption.js) - never sent to the client as-is.

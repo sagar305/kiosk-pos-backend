@@ -16,8 +16,12 @@ export const createOutlet = async (req, res) => {
 };
 
 export const updateOutlet = async (req, res) => {
-  const outlet = await Outlet.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const outlet = await Outlet.findById(req.params.id);
   if (!outlet) return res.status(404).json({ error: 'Not found' });
+  const { settings, ...rest } = req.body;
+  Object.assign(outlet, rest);
+  if (settings) Object.assign(outlet.settings, settings);
+  await outlet.save();
   res.json(outlet);
 };
 
