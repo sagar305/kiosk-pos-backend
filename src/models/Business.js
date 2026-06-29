@@ -20,6 +20,12 @@ const businessSchema = new mongoose.Schema(
       autoPrintReceipt: { type: Boolean, default: true },
       manualDrawerOpenLocked: { type: Boolean, default: false },
     },
+    aiSettings: {
+      // Encrypted (see utils/encryption.js) - never sent to the client as-is.
+      // When unset, the AI assistant falls back to the shared ANTHROPIC_API_KEY
+      // only if this business's owner is in the OWNER_ALLOWED env allowlist.
+      anthropicApiKeyEncrypted: { type: String, default: '' },
+    },
   },
   { timestamps: true }
 );

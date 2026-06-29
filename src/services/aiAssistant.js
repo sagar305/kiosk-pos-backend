@@ -914,8 +914,8 @@ async function executeTool(session, name, input) {
   }
 }
 
-export async function runAssistantTurn(session, userMessage, userRole, userId) {
-  const anthropic = getAnthropicClient();
+export async function runAssistantTurn(session, userMessage, userRole, userId, apiKey) {
+  const anthropic = getAnthropicClient(apiKey);
   session.role = userRole;
   session.userId = userId;
   session.messages.push({ role: 'user', content: userMessage });
