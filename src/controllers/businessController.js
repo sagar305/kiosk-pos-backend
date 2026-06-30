@@ -12,6 +12,7 @@ export const updateBusinessSettings = async (req, res) => {
   Object.assign(business.settings, req.body.settings || {});
   Object.assign(business.theme, req.body.theme || {});
   if (req.body.name) business.name = req.body.name;
+  if (req.body.currency) business.currency = req.body.currency;
   await business.save();
   res.json(business);
 };

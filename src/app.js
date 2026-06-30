@@ -24,6 +24,7 @@ import bootstrapRoutes from './routes/bootstrapRoutes.js';
 import expenseRoutes from './routes/expenseRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import bulkImportRoutes from './routes/bulkImportRoutes.js';
+import aiRoutes from './routes/aiRoutes.js';
 
 const app = express();
 
@@ -64,6 +65,7 @@ app.use('/api/bootstrap', bootstrapRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/bulk-import', bulkImportRoutes);
+app.use('/api/ai', aiRoutes);
 
 app.get('/health', (req, res) => res.json({ ok: true }));
 

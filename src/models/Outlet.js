@@ -9,6 +9,11 @@ const outletSchema = new mongoose.Schema(
     code: { type: String, required: true, trim: true },
     address: String,
     active: { type: Boolean, default: true },
+    settings: {
+      // When unset, the business-level language/currency setting applies.
+      language: { type: String, default: null },
+      currency: { type: String, default: null },
+    },
   },
   { timestamps: true }
 );

@@ -9,6 +9,7 @@
     "seed": "node --experimental-specifier-resolution=node src/scripts/seed.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.10.0",
     "cookie-parser": "^1.4.6",

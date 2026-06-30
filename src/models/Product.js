@@ -54,6 +54,11 @@ const productSchema = new mongoose.Schema(
     image: String,
     category: { type: mongoose.Schema.Types.ObjectId, ref: 'Category', required: true },
     price: { type: Number, required: true, default: 0 },
+    // Cost of goods sold and the margin% used to derive `price` from it, when
+    // set via the AI assistant's ingredient-based costing flow. Both are
+    // optional/informational — orders still price off `price` directly.
+    cogs: { type: Number },
+    marginPercent: { type: Number },
     taxIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Tax' }],
     recipe: { type: [recipeLineSchema], default: [] },
     available: { type: Boolean, default: true },
